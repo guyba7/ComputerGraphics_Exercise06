@@ -64,6 +64,12 @@ const ballMoceSpeed = 0.1;
 let ballMoveDirectionX = 0;
 let ballMoveDirectionZ = 0;
 
+let shotPower = 0.5; // value between 0.0 and 1.0
+const minPower = 0.1;
+const maxPower = 1.0;
+const powerStep = 0.05;
+
+
 
 
 // --------------------- All Materials --------------------------------
@@ -399,6 +405,7 @@ function createStaticBall(){
   northHemisphereSeamMesh.position.y += ballRadius * 2;
   basketballGroup.add(northHemisphereSeamMesh);
 
+
   // add the entire group to the scene
   scene.add(basketballGroup);
   
@@ -440,6 +447,17 @@ scoreDisplay.id = 'score-display';
 scoreDisplay.innerHTML = 'Score: 0 - 0';
 uiContainer.appendChild(scoreDisplay);
 
+// Power bar container
+const powerBarContainer = document.createElement('div');
+powerBarContainer.id = 'power-bar-container';
+
+const powerBarFill = document.createElement('div');
+powerBarFill.id = 'power-bar-fill';
+
+powerBarContainer.appendChild(powerBarFill);
+uiContainer.appendChild(powerBarContainer);
+
+
 // Handle key events
 function handleKeyDown(e) {
   // toggle controls orbit/game
@@ -473,6 +491,17 @@ function handleKeyDown(e) {
         ballMoveDirectionZ = 1;
         break;
 
+    }
+  }
+
+  if (!isOrbitEnabled) {
+    switch (e.key) {
+      case "w":
+        shotPower = Math.min(maxPower, shotPower + powerStep);
+        break;
+      case "s":
+        shotPower = Math.max(minPower, shotPower - powerStep);
+        break;
     }
   }
 
@@ -517,6 +546,10 @@ function animate() {
 
   animateBallSmoothInputMovement();
 
+  // Update power bar
+  powerBarFill.style.width = `${shotPower * 100}%`;
+
+
 
 }
 
@@ -541,7 +574,7 @@ style.innerHTML = `
   #score-display {
     position: absolute;
     top: 20px;
-    left: 50%;
+    left: 100%;
     background: rgba(0, 0, 0, 0.6);
     padding: 16px 32px;
     border-radius: 10px;
@@ -566,5 +599,24 @@ style.innerHTML = `
     max-width: 250px;
     pointer-events: auto;
   }
+  
+  #power-bar-container {
+  width: 200px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid white;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 60px;
+}
+
+  #power-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: red;
+    transition: width 0.1s ease-out;
+    border-radius: 10px;
+}
+
 `;
 document.head.appendChild(style);
