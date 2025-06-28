@@ -27,6 +27,31 @@ function degrees_to_radians(degrees) {
   return degrees * (pi/180);
 }
 
+////////////////////////// HTML /////////////////////////////////////
+
+const orbitControlsHTML = `
+  <h3>Controls:</h3>
+  <p>O - Change to game controls</p>
+  <p>Left Click + drag to rotate</p>
+  <p>Right Click + drag to pan</p>
+  <p>Arrow Keys to pan</p>
+  <p>Scroll to zoom</p>
+  <hr></hr>
+  <p>W / S to adjust shot power</p>
+  <p>Spacebar to shot ball</p>
+  <p>R Keys to reset ball location</p>
+`;
+
+const gameControlsHTML = `
+  <h3>Controls:</h3>
+  <p>O - Change to camera orbit controls</p>
+  <p>Arrow Keys to move ball</p>
+  <hr></hr>
+  <p>W / S to adjust shot power</p>
+  <p>Spacebar to shot ball</p>
+  <p>R Keys to reset ball location</p>
+`;
+
 // --------------------- Global Vars ----------------------------------
 
 const courtWidth = 15
@@ -386,28 +411,15 @@ camera.applyMatrix4(cameraTranslate);
 
 // Orbit controls
 const controls = new OrbitControls(camera, renderer.domElement);
-let isOrbitEnabled = true;
+let isOrbitEnabled = false;
 
 // added to enable keyboard
 controls.listenToKeyEvents(document)
 
 // Instructions display
 const instructionsElement = document.createElement('div');
-instructionsElement.style.position = 'absolute';
-instructionsElement.style.bottom = '20px';
-instructionsElement.style.left = '20px';
-instructionsElement.style.color = 'white';
-instructionsElement.style.fontSize = '16px';
-instructionsElement.style.fontFamily = 'Arial, sans-serif';
-instructionsElement.style.textAlign = 'left';
-instructionsElement.innerHTML = `
-  <h3>Controls:</h3>
-  <p>O - Toggle orbit camera</p>
-  <p>Left Click + drag to rotate</p>
-  <p>Right Click + drag to pan</p>
-  <p>Arrow Keys to pan</p>
-  <p>Scroll to zoom</p>
-`;
+instructionsElement.id='controls-display';
+instructionsElement.innerHTML = gameControlsHTML;
 document.body.appendChild(instructionsElement);
 
 // Main UI container
@@ -425,6 +437,11 @@ uiContainer.appendChild(scoreDisplay);
 function handleKeyDown(e) {
   if (e.key === "o") {
     isOrbitEnabled = !isOrbitEnabled;
+
+    if (isOrbitEnabled)
+      instructionsElement.innerHTML= orbitControlsHTML;
+    else
+      instructionsElement.innerHTML= gameControlsHTML;
   }
 
 }
@@ -446,6 +463,7 @@ function animate() {
 animate();
 
 
+////////////////////////// css /////////////////////////////////////
 
 const style = document.createElement('style');
 style.innerHTML = `
@@ -474,10 +492,16 @@ style.innerHTML = `
     z-index: 10;
   }
 
-
   #controls-display {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    font-size: 16px;
+    font-family: Arial;
+    textAlign: left;
     background: rgba(0, 0, 0, 0.5);
     padding: 10px 16px;
+    color: yellow;
     border-radius: 6px;
     max-width: 250px;
     pointer-events: auto;
