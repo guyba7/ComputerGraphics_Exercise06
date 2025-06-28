@@ -75,11 +75,11 @@ const ballMinClamp = new THREE.Vector3(-courtLength / 2, 0, -courtWidth / 2);
 const ballMaxClamp = new THREE.Vector3(courtLength / 2, 0, courtWidth / 2);
 
 // power
-let shotPower = 0.5; // value between 0.0 and 1.0
-const minPower = 0.1;
+let shotPower = 0.85; // value between 0.0 and 1.0
+const minPower = 0.7;
 const maxPower = 1.0;
-const powerStep = 0.05;
-const maxPowerVelocityScalar = 1;
+const powerStep = 0.025;
+const maxPowerVelocityScalar = 0.4;
 
 // physics
 const gravityAcceleration = new THREE.Vector3(0, -0.01, 0);
@@ -486,12 +486,12 @@ function applyTrajectoryVelocityToBall(targetPosition) {
 
   let velocityScalar = shotPower * maxPowerVelocityScalar;
 
-  // h - height difference
+  // h - vertical difference
   let h = targetPosition.y - originPosition.y;
 
   // d - horizontal distance in XZ plane
-  const originXZ = originPosition.clone().multiply(new THREE.Vector3(1, 0, 1));
-  const targetXZ = targetPosition.clone().multiply(new THREE.Vector3(1, 0, 1));
+  const originXZ = originPosition.clone().setY(0);
+  const targetXZ = targetPosition.clone().setY(0);
   let d = originXZ.distanceTo(targetXZ);
 
   const g = Math.abs(gravityAcceleration.y); // gravity magnitude
@@ -499,40 +499,46 @@ function applyTrajectoryVelocityToBall(targetPosition) {
   const v = velocityScalar;
   const v2 = v * v;
 
-  const discriminant = v2 * v2 - g * (g * d * d + 2 * h * v2);
+  let discriminant = v2 * v2 - g * (g * d * d + 2 * h * v2);
 
   let tanAlpha;
+
   if (discriminant < 0) {
-    // Estimate angle using flat trajectory + upward lift
-    // tanAlpha = (2 * h) / d would aim too low; bias upward slightly:
-    tanAlpha = h / d + 0.3; // tweak 0.3 for arc bias
-  } else {
-    tanAlpha = (v2 + Math.sqrt(discriminant)) / (g * d); // high arc
+    discriminant = 0;
   }
 
-  const alpha = Math.atan(tanAlpha); // in radians
+  tanAlpha = (v2 + Math.sqrt(discriminant)) / (g * d); // high arc
 
-  // Direction in XZ plane
-  const dirXZ = targetXZ.sub(originXZ);
 
-  // Construct direction vector
-  let velocityDirection = new THREE.Vector3(
-    dirXZ.x * Math.cos(alpha),
-    Math.sin(alpha),
-    dirXZ.z * Math.cos(alpha)
-  )
+  const alpha = Math.atan(tanAlpha); // launch angle in radians
 
-  let velocityDirectioNorm = velocityDirection.normalize();
+  // Step 1: Horizontal direction unit vector (XZ)
+  const dirXZ = targetXZ.clone().sub(originXZ).normalize();
 
-  let initialVelocity = velocityDirectioNorm.multiplyScalar(velocityScalar);
+  // Step 2: Compute time to target (t = d / (v * cos(α)))
+  const horizontalSpeed = Math.cos(alpha) * v;
+  const flightTime = d / horizontalSpeed;
 
-  // set ball velocity to initial trajectory velocity
-  ballVelocity = velocityDirectioNorm;
+  // Step 3: Full velocity vector
+  const velocity = new THREE.Vector3(
+    dirXZ.x * horizontalSpeed,
+    Math.sin(alpha) * v,
+    dirXZ.z * horizontalSpeed
+  );
+
+  // Set ball velocity to reach target
+  ballVelocity.copy(velocity);
 }
+
 
 function shootBallToNearestHoop(){
 
-  let rimMesh = forwardHoopGroup.getObjectByName("rim");
+  let rimMesh;
+  if (basketballGroup.position.x > 0)
+    rimMesh = forwardHoopGroup.getObjectByName("rim");
+  else
+    rimMesh = backHoopGroup.getObjectByName("rim");
+
   applyTrajectoryVelocityToBall(rimMesh.getWorldPosition());
 }
 
@@ -621,8 +627,9 @@ function animateBallSmoothInputMovement(){
 }
 
 function updateUI(){
-      // Update power bar
-  powerBarFill.style.width = `${shotPower * 100}%`;
+  // Update power bar
+  let shotFillRatio = (shotPower - minPower) / (maxPower - minPower);
+  powerBarFill.style.width = `${shotFillRatio * 100}%`;
 }
 
 function simulatePhysics_Gravity(){
