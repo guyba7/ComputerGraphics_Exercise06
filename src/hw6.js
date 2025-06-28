@@ -166,7 +166,7 @@ function createCourtFloor(){
   courtMesh = new THREE.Mesh(courtGeometry, courtFloorMat);
   courtMesh.position.y -= courtThickness / 2
   courtMesh.receiveShadow = true;
-
+  courtGeometry.computeBoundingBox();
   scene.add(courtMesh);
 
   function createCircleMarking(radius, thickness, x,y,z) {
@@ -301,6 +301,8 @@ function createHoops(){
     backboard.position.set(backboardOffset, rimHeight + backboardHeight / 2 - supportPoleArmThickness, 0);
     backboard.rotation.y = Math.PI / 2;
     backboard.castShadow = true;
+    backboard.name = "backboard";
+    backboardGeometry.computeBoundingBox();
     hoopGroup.add(backboard);
 
     // Rim
@@ -669,19 +671,27 @@ function handleBallCollision(CollisionNormal) {
   ballVelocity.multiplyScalar(ballRestitution);
 }
 
-function simulatePhysics_Collision(){
- // ballSphereMesh.geometry.computeBoundingSphere();
-  courtMesh.geometry.computeBoundingBox();
+function simulatePhysics_Collision() {
 
   let ballBoundingSphere = ballSphereMesh.geometry.boundingSphere;
   ballBoundingSphere.center = ballSphereMesh.getWorldPosition(new THREE.Vector3())
 
   let courtBoundingBox = courtMesh.geometry.boundingBox;
 
-  if (courtBoundingBox.intersectsSphere(ballBoundingSphere)){
+  if (courtBoundingBox.intersectsSphere(ballBoundingSphere)) {
     // change ball y immediately to prevent the ball from being stuck inside the collision
     basketballGroup.position.y = 0;
     handleBallCollision(new THREE.Vector3(0, 1, 0));
+  }
+
+  const forwardBackboardGMesh = forwardHoopGroup.getObjectByName("backboard");
+  const forwardBackboardGBoundingBox = forwardBackboardGMesh.geometry.boundingBox;
+  const forwardBackboardGMeshPosition = forwardBackboardGMesh.getWorldPosition(new THREE.Vector3());
+  forwardBackboardGBoundingBox.min.add(forwardBackboardGMeshPosition);
+  forwardBackboardGBoundingBox.max.add(forwardBackboardGMeshPosition);
+
+  if (forwardBackboardGBoundingBox.intersectsSphere(ballBoundingSphere)) {
+    handleBallCollision(new THREE.Vector3(1, 0, 0));
   }
 
 }
