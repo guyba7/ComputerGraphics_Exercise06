@@ -54,22 +54,36 @@ const gameControlsHTML = `
 
 // --------------------- Global Vars ----------------------------------
 
+// game
+let isShootingMode = false;
+
+// court
 const courtWidth = 15
 const courtLength = 28
 
+// Objects
 const basketballGroup = new THREE.Group();
+let ballSphereMesh;
+let forwardHoopGroup;
+let backHoopGroup;
 
-const ballMoceSpeed = 0.1;
-
+// ball smooth input movement
+const ballMoveSpeed = 0.1;
 let ballMoveDirectionX = 0;
 let ballMoveDirectionZ = 0;
+const ballMinClamp = new THREE.Vector3(-courtLength / 2, 0, -courtWidth / 2);
+const ballMaxClamp = new THREE.Vector3(courtLength / 2, 0, courtWidth / 2);
 
+// power
 let shotPower = 0.5; // value between 0.0 and 1.0
 const minPower = 0.1;
 const maxPower = 1.0;
 const powerStep = 0.05;
+const maxPowerVelocityScalar = 1;
 
-
+// physics
+const gravityAcceleration = new THREE.Vector3(0, -0.01, 0);
+let ballVelocity = new THREE.Vector3(0, 0, 0);
 
 
 // --------------------- All Materials --------------------------------
@@ -250,10 +264,10 @@ function createHoops(){
   const NetInnerDiameter = rimDiameter * 0.6
 
 
-  createSingHoop(-courtLength / 2 - supportPoleThickness / 2,false);
-  createSingHoop(courtLength / 2 + supportPoleThickness / 2,true);
+  backHoopGroup = createSingleHoop(-courtLength / 2 - supportPoleThickness / 2,false);
+  forwardHoopGroup =  createSingleHoop(courtLength / 2 + supportPoleThickness / 2,true);
 
-  function createSingHoop(xPos, flip) {
+  function createSingleHoop(xPos, flip) {
     const hoopGroup = new THREE.Group();
 
 
@@ -285,6 +299,7 @@ function createHoops(){
     const rimGeometry = new THREE.TorusGeometry(rimDiameter, rimThickness, 6, 64);
     const rim = new THREE.Mesh(rimGeometry, rimMat);
     rim.castShadow = true;
+    rim.name = "rim";
     rim.position.set(rimXPos, rimHeight, 0);
     rim.rotation.x = Math.PI / 2;
     hoopGroup.add(rim);
@@ -321,7 +336,9 @@ function createHoops(){
 
     if (flip)
       hoopGroup.rotation.y += Math.PI
+
     scene.add(hoopGroup);
+    return hoopGroup;
   }
 }
 
@@ -330,10 +347,11 @@ function createStaticBall(){
   const ballGeometry = new THREE.SphereGeometry(ballRadius, 64, 64);
   const ballMaterial = new THREE.MeshPhongMaterial({ color: 0xee6c30 }); // orange-brown
 
-  const basketball = new THREE.Mesh(ballGeometry, ballMaterial);
-  basketball.castShadow = true;
-  basketball.position.set(0, ballRadius, 0);
-  basketballGroup.add(basketball);
+  ballSphereMesh = new THREE.Mesh(ballGeometry, ballMaterial);
+  ballSphereMesh.castShadow = true;
+  ballSphereMesh.position.set(0, ballRadius, 0);
+  ballSphereMesh.name = "sphere";
+  basketballGroup.add(ballSphereMesh);
 
   // Seam using TubeGeometry (controllable width)
   const seamRadius = ballRadius;
@@ -457,6 +475,67 @@ powerBarFill.id = 'power-bar-fill';
 powerBarContainer.appendChild(powerBarFill);
 uiContainer.appendChild(powerBarContainer);
 
+function resetBall(){
+  ballVelocity.set(0,0,0)
+  basketballGroup.position.set(0,0,0)
+  isShootingMode = false;
+}
+
+function applyTrajectoryVelocityToBall(targetPosition) {
+  let originPosition = ballSphereMesh.getWorldPosition(new THREE.Vector3());
+
+  let velocityScalar = shotPower * maxPowerVelocityScalar;
+
+  // h - height difference
+  let h = targetPosition.y - originPosition.y;
+
+  // d - horizontal distance in XZ plane
+  const originXZ = originPosition.clone().multiply(new THREE.Vector3(1, 0, 1));
+  const targetXZ = targetPosition.clone().multiply(new THREE.Vector3(1, 0, 1));
+  let d = originXZ.distanceTo(targetXZ);
+
+  const g = Math.abs(gravityAcceleration.y); // gravity magnitude
+
+  const v = velocityScalar;
+  const v2 = v * v;
+
+  const discriminant = v2 * v2 - g * (g * d * d + 2 * h * v2);
+
+  let tanAlpha;
+  if (discriminant < 0) {
+    // Estimate angle using flat trajectory + upward lift
+    // tanAlpha = (2 * h) / d would aim too low; bias upward slightly:
+    tanAlpha = h / d + 0.3; // tweak 0.3 for arc bias
+  } else {
+    tanAlpha = (v2 + Math.sqrt(discriminant)) / (g * d); // high arc
+  }
+
+  const alpha = Math.atan(tanAlpha); // in radians
+
+  // Direction in XZ plane
+  const dirXZ = targetXZ.sub(originXZ);
+
+  // Construct direction vector
+  let velocityDirection = new THREE.Vector3(
+    dirXZ.x * Math.cos(alpha),
+    Math.sin(alpha),
+    dirXZ.z * Math.cos(alpha)
+  )
+
+  let velocityDirectioNorm = velocityDirection.normalize();
+
+  let initialVelocity = velocityDirectioNorm.multiplyScalar(velocityScalar);
+
+  // set ball velocity to initial trajectory velocity
+  ballVelocity = velocityDirectioNorm;
+}
+
+function shootBallToNearestHoop(){
+
+  let rimMesh = forwardHoopGroup.getObjectByName("rim");
+  applyTrajectoryVelocityToBall(rimMesh.getWorldPosition());
+}
+
 
 // Handle key events
 function handleKeyDown(e) {
@@ -494,15 +573,22 @@ function handleKeyDown(e) {
     }
   }
 
-  if (!isOrbitEnabled) {
-    switch (e.key) {
-      case "w":
-        shotPower = Math.min(maxPower, shotPower + powerStep);
-        break;
-      case "s":
-        shotPower = Math.max(minPower, shotPower - powerStep);
-        break;
-    }
+  switch (e.key) {
+    case "w":
+      shotPower = Math.min(maxPower, shotPower + powerStep);
+      break;
+    case "s":
+      shotPower = Math.max(minPower, shotPower - powerStep);
+      break;
+    case " ":
+      if (!isShootingMode){
+        isShootingMode = true;
+        shootBallToNearestHoop();
+      }
+      break;
+    case "r":
+      resetBall();
+      break;
   }
 
 }
@@ -523,14 +609,42 @@ function handleKeyUp(e) {
 }
 
 function animateBallSmoothInputMovement(){
-    // Move ball smooth
-  basketballGroup.position.x += ballMoveDirectionX * ballMoceSpeed;
-  basketballGroup.position.z += ballMoveDirectionZ * ballMoceSpeed;
 
-  // clamp position inside court
-  basketballGroup.position.x = Math.max(-courtLength / 2, Math.min(courtLength / 2, basketballGroup.position.x));
-  basketballGroup.position.z = Math.max(-courtWidth / 2, Math.min(courtWidth / 2, basketballGroup.position.z));
+  if (!isShootingMode) {
+    // Move ball smooth
+    basketballGroup.position.x += ballMoveDirectionX * ballMoveSpeed;
+    basketballGroup.position.z += ballMoveDirectionZ * ballMoveSpeed;
+
+    // clamp position inside court
+    basketballGroup.position.clamp(ballMinClamp,ballMaxClamp);
+  }
 }
+
+function updateUI(){
+      // Update power bar
+  powerBarFill.style.width = `${shotPower * 100}%`;
+}
+
+function simulatePhysics_Gravity(){
+  if (isShootingMode){
+    ballVelocity.add(gravityAcceleration);
+  }
+}
+
+function simulatePhysics_Velocity(){
+  basketballGroup.position.add(ballVelocity);
+}
+function simulatePhysics_Collision(){
+
+}
+
+function simulatePhysics(){
+  simulatePhysics_Gravity();
+  simulatePhysics_Velocity();
+  simulatePhysics_Collision();
+}
+
+
 
 document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
@@ -545,9 +659,14 @@ function animate() {
   renderer.render(scene, camera);
 
   animateBallSmoothInputMovement();
+  updateUI();
+  simulatePhysics();
 
-  // Update power bar
-  powerBarFill.style.width = `${shotPower * 100}%`;
+  if (isShootingMode){
+    if (ballVelocity.length() === 0)
+      isShootingMode = false;
+  }
+
 
 
 
