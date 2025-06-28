@@ -57,6 +57,15 @@ const gameControlsHTML = `
 const courtWidth = 15
 const courtLength = 28
 
+const basketballGroup = new THREE.Group();
+
+const ballMoceSpeed = 0.1;
+
+let ballMoveDirectionX = 0;
+let ballMoveDirectionZ = 0;
+
+
+
 // --------------------- All Materials --------------------------------
 // court floor
 const courtFloorMat = new THREE.MeshPhongMaterial({
@@ -315,8 +324,6 @@ function createStaticBall(){
   const ballGeometry = new THREE.SphereGeometry(ballRadius, 64, 64);
   const ballMaterial = new THREE.MeshPhongMaterial({ color: 0xee6c30 }); // orange-brown
 
-  const basketballGroup = new THREE.Group();
-
   const basketball = new THREE.Mesh(ballGeometry, ballMaterial);
   basketball.castShadow = true;
   basketball.position.set(0, ballRadius, 0);
@@ -435,19 +442,69 @@ uiContainer.appendChild(scoreDisplay);
 
 // Handle key events
 function handleKeyDown(e) {
+  // toggle controls orbit/game
   if (e.key === "o") {
     isOrbitEnabled = !isOrbitEnabled;
 
-    if (isOrbitEnabled)
-      instructionsElement.innerHTML= orbitControlsHTML;
-    else
-      instructionsElement.innerHTML= gameControlsHTML;
+    if (isOrbitEnabled) {
+      instructionsElement.innerHTML = orbitControlsHTML;
+      ballMoveDirectionX = 0;
+      ballMoveDirectionZ = 0;
+    } else
+      instructionsElement.innerHTML = gameControlsHTML;
+  }
+
+  if (!isOrbitEnabled) {
+    // arrow keys
+    switch (e.key) {
+      case "ArrowUp":
+        ballMoveDirectionX = 1;
+        break;
+
+      case "ArrowDown":
+        ballMoveDirectionX = -1;
+        break;
+
+      case "ArrowLeft":
+        ballMoveDirectionZ = -1;
+        break;
+
+      case "ArrowRight":
+        ballMoveDirectionZ = 1;
+        break;
+
+    }
   }
 
 }
+function handleKeyUp(e) {
+    // arrow keys
+  switch (e.key) {
+    case "ArrowUp":
+    case "ArrowDown":
+      ballMoveDirectionX = 0;
+      break;
+
+    case "ArrowLeft":
+    case "ArrowRight":
+      ballMoveDirectionZ = 0;
+      break;
+
+  }
+}
+
+function animateBallSmoothInputMovement(){
+    // Move ball smooth
+  basketballGroup.position.x += ballMoveDirectionX * ballMoceSpeed;
+  basketballGroup.position.z += ballMoveDirectionZ * ballMoceSpeed;
+
+  // clamp position inside court
+  basketballGroup.position.x = Math.max(-courtLength / 2, Math.min(courtLength / 2, basketballGroup.position.x));
+  basketballGroup.position.z = Math.max(-courtWidth / 2, Math.min(courtWidth / 2, basketballGroup.position.z));
+}
 
 document.addEventListener('keydown', handleKeyDown);
-
+document.addEventListener('keyup', handleKeyUp);
 // Animation function
 function animate() {
   requestAnimationFrame(animate);
@@ -456,8 +513,11 @@ function animate() {
   controls.enabled = isOrbitEnabled;
   controls.update();
 
-  
   renderer.render(scene, camera);
+
+  animateBallSmoothInputMovement();
+
+
 }
 
 animate();
