@@ -56,14 +56,22 @@ const gameControlsHTML = `
 
 // game
 let isShootingMode = false;
+let isCurrentShotThreePoints = false;
+let shotsAttempts = 0;
+let shotsSuccesses= 0;
+let scorePoints= 0;
 
 // court
 const courtWidth = 15
 const courtLength = 28
 
+// ball
+const ballStartHeight = 0;
+
 // Objects
 const basketballGroup = new THREE.Group();
 let ballSphereMesh;
+let courtMesh;
 let forwardHoopGroup;
 let backHoopGroup;
 
@@ -71,8 +79,8 @@ let backHoopGroup;
 const ballMoveSpeed = 0.1;
 let ballMoveDirectionX = 0;
 let ballMoveDirectionZ = 0;
-const ballMinClamp = new THREE.Vector3(-courtLength / 2, 0, -courtWidth / 2);
-const ballMaxClamp = new THREE.Vector3(courtLength / 2, 0, courtWidth / 2);
+const ballMinClamp = new THREE.Vector3(-courtLength / 2, ballStartHeight, -courtWidth / 2);
+const ballMaxClamp = new THREE.Vector3(courtLength / 2, ballStartHeight, courtWidth / 2);
 
 // power
 let shotPower = 0.85; // value between 0.0 and 1.0
@@ -84,6 +92,7 @@ const maxPowerVelocityScalar = 0.4;
 // physics
 const gravityAcceleration = new THREE.Vector3(0, -0.01, 0);
 let ballVelocity = new THREE.Vector3(0, 0, 0);
+const ballRestitution = 0.8;
 
 
 // --------------------- All Materials --------------------------------
@@ -154,11 +163,11 @@ function createCourtFloor(){
   // Court floor - just a simple brown surface
   const courtGeometry = new THREE.BoxGeometry(courtLength + courtOuterBounds * 2, courtThickness, courtWidth + courtOuterBounds * 2);
 
-  const court = new THREE.Mesh(courtGeometry, courtFloorMat);
-  court.position.y -= courtThickness / 2
-  court.receiveShadow = true;
+  courtMesh = new THREE.Mesh(courtGeometry, courtFloorMat);
+  courtMesh.position.y -= courtThickness / 2
+  courtMesh.receiveShadow = true;
 
-  scene.add(court);
+  scene.add(courtMesh);
 
   function createCircleMarking(radius, thickness, x,y,z) {
 
@@ -423,7 +432,6 @@ function createStaticBall(){
   northHemisphereSeamMesh.position.y += ballRadius * 2;
   basketballGroup.add(northHemisphereSeamMesh);
 
-
   // add the entire group to the scene
   scene.add(basketballGroup);
   
@@ -435,6 +443,8 @@ function lerp(a, b, alpha) {
 
 // Create all elements
 createBasketballCourt();
+
+resetBall();
 
 // Set camera position for better view
 const cameraTranslate = new THREE.Matrix4();
@@ -459,15 +469,15 @@ const uiContainer = document.createElement('div');
 uiContainer.id = 'ui-container';
 document.body.appendChild(uiContainer);
 
-// Score display
-const scoreDisplay = document.createElement('div');
-scoreDisplay.id = 'score-display';
-scoreDisplay.innerHTML = 'Score: 0 - 0';
-uiContainer.appendChild(scoreDisplay);
-
 // Power bar container
 const powerBarContainer = document.createElement('div');
 powerBarContainer.id = 'power-bar-container';
+// Score display
+const scoreDisplay = document.createElement('div');
+scoreDisplay.id = 'score-display';
+uiContainer.appendChild(scoreDisplay);
+
+
 
 const powerBarFill = document.createElement('div');
 powerBarFill.id = 'power-bar-fill';
@@ -477,7 +487,7 @@ uiContainer.appendChild(powerBarContainer);
 
 function resetBall(){
   ballVelocity.set(0,0,0)
-  basketballGroup.position.set(0,0,0)
+  basketballGroup.position.set(0,ballStartHeight,0)
   isShootingMode = false;
 }
 
@@ -540,6 +550,8 @@ function shootBallToNearestHoop(){
     rimMesh = backHoopGroup.getObjectByName("rim");
 
   applyTrajectoryVelocityToBall(rimMesh.getWorldPosition());
+
+  shotsAttempts++;
 }
 
 
@@ -626,10 +638,20 @@ function animateBallSmoothInputMovement(){
   }
 }
 
-function updateUI(){
+function updateUI() {
   // Update power bar
   let shotFillRatio = (shotPower - minPower) / (maxPower - minPower);
   powerBarFill.style.width = `${shotFillRatio * 100}%`;
+
+
+  const percentage = shotsAttempts > 0
+      ? ((shotsSuccesses / shotsAttempts) * 100).toFixed(1)
+      : "0";
+
+  scoreDisplay.innerHTML = `
+    <strong>Total Score:</strong> ${scorePoints}<br>
+    <strong>Success Rate:</strong> ${shotsSuccesses} / ${shotsAttempts} (${percentage}%)<br>
+  `;
 }
 
 function simulatePhysics_Gravity(){
@@ -641,16 +663,36 @@ function simulatePhysics_Gravity(){
 function simulatePhysics_Velocity(){
   basketballGroup.position.add(ballVelocity);
 }
+
+function handleBallCollision(CollisionNormal) {
+  ballVelocity = ballVelocity.reflect(CollisionNormal);
+  ballVelocity.multiplyScalar(ballRestitution);
+}
+
 function simulatePhysics_Collision(){
+ // ballSphereMesh.geometry.computeBoundingSphere();
+  courtMesh.geometry.computeBoundingBox();
+
+  let ballBoundingSphere = ballSphereMesh.geometry.boundingSphere;
+  ballBoundingSphere.center = ballSphereMesh.getWorldPosition(new THREE.Vector3())
+
+  let courtBoundingBox = courtMesh.geometry.boundingBox;
+
+  if (courtBoundingBox.intersectsSphere(ballBoundingSphere)){
+    // change ball y immediately to prevent the ball from being stuck inside the collision
+    basketballGroup.position.y = 0;
+    handleBallCollision(new THREE.Vector3(0, 1, 0));
+  }
 
 }
 
 function simulatePhysics(){
-  simulatePhysics_Gravity();
-  simulatePhysics_Velocity();
-  simulatePhysics_Collision();
+  if (isShootingMode) {
+    simulatePhysics_Gravity();
+    simulatePhysics_Velocity();
+    simulatePhysics_Collision();
+  }
 }
-
 
 
 document.addEventListener('keydown', handleKeyDown);
@@ -670,13 +712,10 @@ function animate() {
   simulatePhysics();
 
   if (isShootingMode){
-    if (ballVelocity.length() === 0)
-      isShootingMode = false;
+    // if ball stops moving or fell out of court -> reset ball
+    if (ballVelocity.length() < 0.001 || ballSphereMesh.getWorldPosition(new THREE.Vector3()).y < -3)
+      resetBall();
   }
-
-
-
-
 }
 
 animate();
@@ -688,6 +727,8 @@ const style = document.createElement('style');
 style.innerHTML = `
   #ui-container {
     position: absolute;
+    width: 100%;
+    height: 100%;
     top: 10px;
     left: 10px;
     color: white;
@@ -700,7 +741,7 @@ style.innerHTML = `
   #score-display {
     position: absolute;
     top: 20px;
-    left: 100%;
+    left: 50%;
     background: rgba(0, 0, 0, 0.6);
     padding: 16px 32px;
     border-radius: 10px;
@@ -709,6 +750,7 @@ style.innerHTML = `
     color: white;
     pointer-events: none;
     z-index: 10;
+    transform: translateX(-50%);
   }
 
   #controls-display {
@@ -724,11 +766,13 @@ style.innerHTML = `
     border-radius: 6px;
     max-width: 250px;
     pointer-events: auto;
+    
   }
   
   #power-bar-container {
-  width: 200px;
-  height: 20px;
+  width: 400px;
+  height: 60px;
+  left: 1000px;
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid white;
   border-radius: 10px;
