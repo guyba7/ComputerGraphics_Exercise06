@@ -57,6 +57,8 @@ const gameControlsHTML = `
 // game
 let isShootingMode = false;
 let isCurrentShotThreePoints = false;
+let ShootDirection = 0;
+let ShotState = 0;
 let shotsAttempts = 0;
 let shotsSuccesses= 0;
 let scorePoints= 0;
@@ -66,7 +68,12 @@ const courtWidth = 15
 const courtLength = 28
 
 // ball
+const ballRadius = 0.24; // standard basketball radius
 const ballStartHeight = 0;
+
+// rim
+const rimDiameter = 0.45;
+const rimThickness = 0.02;
 
 // Objects
 const basketballGroup = new THREE.Group();
@@ -265,9 +272,6 @@ function createHoops(){
   const supportPoleArmHeight = 3.4
   const supportPoleArmThickness = 0.22
 
-  const rimDiameter = 0.45
-  const rimThickness = 0.02
-
   const NetNumOfSegments = 16
   const netHeight = 0.6;
   const NetInnerDiameter = rimDiameter * 0.6
@@ -354,7 +358,6 @@ function createHoops(){
 }
 
 function createStaticBall(){
-  var ballRadius = 0.24; // standard basketball radius
   const ballGeometry = new THREE.SphereGeometry(ballRadius, 64, 64);
   const ballMaterial = new THREE.MeshPhongMaterial({ color: 0xee6c30 }); // orange-brown
 
@@ -488,9 +491,15 @@ powerBarContainer.appendChild(powerBarFill);
 uiContainer.appendChild(powerBarContainer);
 
 function resetBall(){
+
+  if (isShootingMode && ShotState === 0)
+        shotsAttempts++;
+
   ballVelocity.set(0,0,0)
   basketballGroup.position.set(0,ballStartHeight,0)
   isShootingMode = false;
+
+
 }
 
 function applyTrajectoryVelocityToBall(targetPosition) {
@@ -545,15 +554,21 @@ function applyTrajectoryVelocityToBall(targetPosition) {
 
 function shootBallToNearestHoop(){
 
+  isShootingMode = true;
+  ShotState = 0;
+
   let rimMesh;
   if (basketballGroup.position.x > 0)
+  {
     rimMesh = forwardHoopGroup.getObjectByName("rim");
-  else
+    ShootDirection = 1;
+    }
+  else {
     rimMesh = backHoopGroup.getObjectByName("rim");
+    ShootDirection = -1;
+  }
 
   applyTrajectoryVelocityToBall(rimMesh.getWorldPosition());
-
-  shotsAttempts++;
 }
 
 
@@ -602,7 +617,6 @@ function handleKeyDown(e) {
       break;
     case " ":
       if (!isShootingMode){
-        isShootingMode = true;
         shootBallToNearestHoop();
       }
       break;
@@ -671,6 +685,40 @@ function handleBallCollision(CollisionNormal) {
   ballVelocity.multiplyScalar(ballRestitution);
 }
 
+function simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere,direction) {
+  const BackboardGBoundingBox = backboardMesh.geometry.boundingBox;
+  const BackboardGMeshPosition = backboardMesh.getWorldPosition(new THREE.Vector3());
+
+  if (BackboardGBoundingBox.intersectsSphere(ballBoundingSphere)) {
+    handleBallCollision(new THREE.Vector3(direction, 0, 0));
+  }
+}
+
+function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere){
+
+}
+
+function detectScore(rimMesh, ballBoundingSphere) {
+
+  if (ShotState === 0) {
+    const rimPos = rimMesh.getWorldPosition(new THREE.Vector3());
+    const ballPos = ballBoundingSphere.center;
+    if (ballPos.z <= rimPos.z && ballVelocity.z < 0) {
+      let distanceFromRimCenter = ballBoundingSphere.center.sub(ballBoundingSphere.center);
+      let horizontalDistanceFromRimCenter = new THREE.Vector3(distanceFromRimCenter.x, distanceFromRimCenter.x, 0);
+
+      if (horizontalDistanceFromRimCenter.length() <= rimDiameter / 2 - rimThickness)
+        ShotState = 1;
+      else
+        ShotState = -1;
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function simulatePhysics_Collision() {
 
   let ballBoundingSphere = ballSphereMesh.geometry.boundingSphere;
@@ -684,16 +732,34 @@ function simulatePhysics_Collision() {
     handleBallCollision(new THREE.Vector3(0, 1, 0));
   }
 
-  const forwardBackboardGMesh = forwardHoopGroup.getObjectByName("backboard");
-  const forwardBackboardGBoundingBox = forwardBackboardGMesh.geometry.boundingBox;
-  const forwardBackboardGMeshPosition = forwardBackboardGMesh.getWorldPosition(new THREE.Vector3());
-  forwardBackboardGBoundingBox.min.add(forwardBackboardGMeshPosition);
-  forwardBackboardGBoundingBox.max.add(forwardBackboardGMeshPosition);
+  let backboardMesh;
+  let rimMesh;
 
-  if (forwardBackboardGBoundingBox.intersectsSphere(ballBoundingSphere)) {
-    handleBallCollision(new THREE.Vector3(1, 0, 0));
+  if (ShootDirection === 1) {
+    backboardMesh = forwardHoopGroup.getObjectByName("backboard");
+    rimMesh = forwardHoopGroup.getObjectByName("rim")
   }
 
+  if (ShootDirection === -1) {
+    backboardMesh = backHoopGroup.getObjectByName("backboard");
+    rimMesh = backHoopGroup.getObjectByName("rim")
+  }
+
+  simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere, ShootDirection * -1);
+  simulatePhysics_RimCollision(rimMesh, ballBoundingSphere);
+
+  if (detectScore(rimMesh, ballBoundingSphere)) {
+    shotsAttempts++;
+
+    if (ShotState === 1) {
+      shotsSuccesses++;
+
+      if (isCurrentShotThreePoints)
+        scorePoints += 3;
+      else
+        scorePoints += 2;
+    }
+  }
 }
 
 function simulatePhysics(){
@@ -723,8 +789,9 @@ function animate() {
 
   if (isShootingMode){
     // if ball stops moving or fell out of court -> reset ball
-    if (ballVelocity.length() < 0.001 || ballSphereMesh.getWorldPosition(new THREE.Vector3()).y < -3)
+    if (ballVelocity.length() < 0.01 || ballSphereMesh.getWorldPosition(new THREE.Vector3()).y < -3) {
       resetBall();
+    }
   }
 }
 
@@ -737,8 +804,7 @@ const style = document.createElement('style');
 style.innerHTML = `
   #ui-container {
     position: absolute;
-    width: 100%;
-    height: 100%;
+    width: 99%;
     top: 10px;
     left: 10px;
     color: white;
