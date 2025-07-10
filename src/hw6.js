@@ -547,6 +547,12 @@ function applyTrajectoryVelocityToBall(targetPosition) {
     dirXZ.z * horizontalSpeed
   );
 
+    // Add tiny random deviation
+  const deviationStrength =  0.002; // adjust for more or less randomness
+  velocity.x += (Math.random() * 2 - 1) * deviationStrength;
+  velocity.y += (Math.random() * 2 - 1) * deviationStrength;
+  velocity.z += (Math.random() * 2 - 1) * deviationStrength;
+
   // Set ball velocity to reach target
   ballVelocity.copy(velocity);
 }
@@ -558,7 +564,7 @@ function shootBallToNearestHoop(){
   ShotState = 0;
 
   let rimMesh;
-  if (basketballGroup.position.x > 0)
+  if (basketballGroup.position.x >= 0)
   {
     rimMesh = forwardHoopGroup.getObjectByName("rim");
     ShootDirection = 1;
@@ -664,7 +670,10 @@ function updateUI() {
       ? ((shotsSuccesses / shotsAttempts) * 100).toFixed(1)
       : "0";
 
+  let ShoteStateText = "Shot!";
+
   scoreDisplay.innerHTML = `
+    <strong>${ShoteStateText}</strong> <br>
     <strong>Total Score:</strong> ${scorePoints}<br>
     <strong>Success Rate:</strong> ${shotsSuccesses} / ${shotsAttempts} (${percentage}%)<br>
   `;
@@ -694,18 +703,33 @@ function simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere,di
   }
 }
 
-function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere){
+function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere) {
+  const rimCenter = rimMesh.getWorldPosition(new THREE.Vector3());
+  const ballCenter = ballBoundingSphere.center;
 
+  // Compute the vector from rim center to ball center (full 3D)
+  const collisionVector = new THREE.Vector3().subVectors(ballCenter, rimCenter);
+  const distance = collisionVector.length();
+
+  // Use a tighter threshold to allow for realistic bounce
+  const rimCollisionRadius = rimDiameter / 2 + ballRadius - 0.01; // tweak as needed
+
+  // Check if ball is overlapping with rim space
+  if (distance <= rimCollisionRadius) {
+    const normal = collisionVector.normalize(); // full 3D normal
+    handleBallCollision(normal);
+  }
 }
+
 
 function detectScore(rimMesh, ballBoundingSphere) {
 
   if (ShotState === 0) {
     const rimPos = rimMesh.getWorldPosition(new THREE.Vector3());
     const ballPos = ballBoundingSphere.center;
-    if (ballPos.z <= rimPos.z && ballVelocity.z < 0) {
-      let distanceFromRimCenter = ballBoundingSphere.center.sub(ballBoundingSphere.center);
-      let horizontalDistanceFromRimCenter = new THREE.Vector3(distanceFromRimCenter.x, distanceFromRimCenter.x, 0);
+    if (ballPos.y <= rimPos.y && ballVelocity.y < 0) {
+      let distanceFromRimCenter = ballBoundingSphere.center.sub(rimPos);
+      let horizontalDistanceFromRimCenter = new THREE.Vector3(distanceFromRimCenter.x, 0, distanceFromRimCenter.z);
 
       if (horizontalDistanceFromRimCenter.length() <= rimDiameter / 2 - rimThickness)
         ShotState = 1;
@@ -746,7 +770,7 @@ function simulatePhysics_Collision() {
   }
 
   simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere, ShootDirection * -1);
-  simulatePhysics_RimCollision(rimMesh, ballBoundingSphere);
+  //simulatePhysics_RimCollision(rimMesh, ballBoundingSphere);
 
   if (detectScore(rimMesh, ballBoundingSphere)) {
     shotsAttempts++;
