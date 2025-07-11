@@ -66,6 +66,8 @@ let scorePoints= 0;
 // court
 const courtWidth = 15
 const courtLength = 28
+const threePointsMarkingsRadius = (courtWidth - 1.8) / 2;
+const threePointsMarkingsRadiusCenterOffset = 1.57;
 
 // ball
 const ballRadius = 0.24; // standard basketball radius
@@ -97,7 +99,7 @@ const powerStep = 0.025;
 const maxPowerVelocityScalar = 0.4;
 
 // physics
-const gravityAcceleration = new THREE.Vector3(0, -0.01, 0);
+let gravityAcceleration = new THREE.Vector3(0, -0.01, 0);
 let ballVelocity = new THREE.Vector3(0, 0, 0);
 const ballRestitution = 0.8;
 
@@ -158,8 +160,6 @@ function createCourtFloor(){
   const courtThickness = 0.2;
   const courtMarkingsThickness = 0.1;
   const courtMarkingsYPos = 0.001;
-  const threePointsMarkingsRadius = (courtWidth - 1.8) / 2;
-  const threePointsMarkingsRadiusCenterOffset = 1.57;
   const arcInnerRadius = threePointsMarkingsRadius - courtMarkingsThickness / 2;
   const arcOuterRadius = threePointsMarkingsRadius + courtMarkingsThickness / 2;
   const arcSegments = 64;
@@ -216,8 +216,8 @@ function createCourtFloor(){
     else
       xPos -= threePointsMarkingsRadiusCenterOffset / 2;
 
-    createLineMarking(threePointsMarkingsRadiusCenterOffset, courtMarkingsThickness, xPos , courtMarkingsYPos , threePointsMarkingsRadius)
-    createLineMarking(threePointsMarkingsRadiusCenterOffset, courtMarkingsThickness, xPos , courtMarkingsYPos , -threePointsMarkingsRadius)
+    createLineMarking(threePointsMarkingsRadiusCenterOffset, courtMarkingsThickness, xPos , courtMarkingsYPos , threePointsMarkingsRadius);
+    createLineMarking(threePointsMarkingsRadiusCenterOffset, courtMarkingsThickness, xPos , courtMarkingsYPos , -threePointsMarkingsRadius);
   }
 
   // Center line marking
@@ -365,6 +365,8 @@ function createStaticBall(){
   ballSphereMesh.castShadow = true;
   ballSphereMesh.position.set(0, ballRadius, 0);
   ballSphereMesh.name = "sphere";
+  ballSphereMesh.frustumCulled = false;
+  ballSphereMesh.geometry.computeBoundingSphere();
   basketballGroup.add(ballSphereMesh);
 
   // Seam using TubeGeometry (controllable width)
@@ -548,7 +550,7 @@ function applyTrajectoryVelocityToBall(targetPosition) {
   );
 
     // Add tiny random deviation
-  const deviationStrength =  0.002; // adjust for more or less randomness
+  const deviationStrength =  0;//0.002; // adjust for more or less randomness
   velocity.x += (Math.random() * 2 - 1) * deviationStrength;
   velocity.y += (Math.random() * 2 - 1) * deviationStrength;
   velocity.z += (Math.random() * 2 - 1) * deviationStrength;
@@ -557,6 +559,33 @@ function applyTrajectoryVelocityToBall(targetPosition) {
   ballVelocity.copy(velocity);
 }
 
+function isAThreePointShot()
+{
+
+  let ballPosition = ballSphereMesh.getWorldPosition(new THREE.Vector3());
+
+  ballPosition.y = 0;
+
+  // is on the offset edge of the court
+  if ((ShootDirection === 1 && ballPosition.x >= courtLength / 2 - threePointsMarkingsRadiusCenterOffset) || (ShootDirection ===-1 && ballPosition.x <= -courtLength / 2 + threePointsMarkingsRadiusCenterOffset))
+  {
+      return Math.abs(ballPosition.z) > threePointsMarkingsRadius;
+  }
+
+  let hoopCenter;
+  if (ShootDirection === 1)
+  {
+    hoopCenter = new THREE.Vector3( courtLength / 2 - threePointsMarkingsRadiusCenterOffset,0,0);
+  }
+  else
+  {
+    hoopCenter = new THREE.Vector3(-courtLength / 2 + threePointsMarkingsRadiusCenterOffset,0,0);
+  }
+
+  let horizontalDistance = ballPosition.sub(hoopCenter);
+
+  return horizontalDistance.length() > threePointsMarkingsRadius;
+}
 
 function shootBallToNearestHoop(){
 
@@ -573,6 +602,8 @@ function shootBallToNearestHoop(){
     rimMesh = backHoopGroup.getObjectByName("rim");
     ShootDirection = -1;
   }
+
+  isCurrentShotThreePoints = isAThreePointShot();
 
   applyTrajectoryVelocityToBall(rimMesh.getWorldPosition());
 }
@@ -665,19 +696,45 @@ function updateUI() {
   let shotFillRatio = (shotPower - minPower) / (maxPower - minPower);
   powerBarFill.style.width = `${shotFillRatio * 100}%`;
 
-
   const percentage = shotsAttempts > 0
       ? ((shotsSuccesses / shotsAttempts) * 100).toFixed(1)
       : "0";
 
-  let ShoteStateText = "Shot!";
+  if (basketballGroup.position.x >= 0)
+    ShootDirection = 1;
+  else
+    ShootDirection = -1;
+
+  let pointsTextSuffix;
+  if (isAThreePointShot())
+    pointsTextSuffix = " (3 Points)";
+  else
+    pointsTextSuffix = " (2 Points)";
+
+  let ShootStateText = "";
+  let shootTextColor = "white";
+
+  if (!isShootingMode) {
+    ShootStateText = "Ready To Shoot" + pointsTextSuffix;
+  } else {
+    if (ShotState === 0) {
+      ShootStateText = "Shot taken....";
+    } else if (ShotState === 1) {
+      ShootStateText = "SHOT MADE!" + pointsTextSuffix;
+      shootTextColor = "green";
+    } else if (ShotState === -1) {
+      ShootStateText = "MISSED SHOT";
+      shootTextColor = "red";
+    }
+  }
 
   scoreDisplay.innerHTML = `
-    <strong>${ShoteStateText}</strong> <br>
+    <strong><span style="color:${shootTextColor}">${ShootStateText}</span></strong><br>
     <strong>Total Score:</strong> ${scorePoints}<br>
     <strong>Success Rate:</strong> ${shotsSuccesses} / ${shotsAttempts} (${percentage}%)<br>
   `;
 }
+
 
 function simulatePhysics_Gravity(){
   if (isShootingMode){
@@ -703,20 +760,48 @@ function simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere,di
   }
 }
 
+function sphereTorusCollision(sphereCenter, sphereRadius, torusCenter, torusRadius, torusThickness) {
+  // Transform the sphere position into torus-local space (assuming torus lies flat in XZ plane at origin)
+  const localSphereCenter = sphereCenter.clone().sub(torusCenter);
+
+  // Project onto XZ plane (since torus lies in XZ)
+  const projected = new THREE.Vector3(localSphereCenter.x, 0, localSphereCenter.z);
+
+  // Get the closest point on the torus's ring circle (in XZ plane)
+  const ringDirection = projected.length() > 0 ? projected.clone().normalize() : new THREE.Vector3(1, 0, 0);
+  const closestPointOnRing = ringDirection.clone().multiplyScalar(torusRadius);
+
+  // Compute vector from sphere to closest point on torus tube
+  const toTubeCenter = closestPointOnRing.clone().sub(localSphereCenter);
+  const distance = toTubeCenter.length();
+
+  // Check for collision
+  const combinedRadius = sphereRadius + torusThickness;
+  const collided = distance < combinedRadius;
+
+  let normal = null;
+  if (collided) {
+    // The normal is calculated in local space, but since we assume no rotation, it's valid in world space.
+    normal = toTubeCenter.clone().normalize().negate();
+  }
+
+  return { collided, normal };
+}
+
 function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere) {
   const rimCenter = rimMesh.getWorldPosition(new THREE.Vector3());
   const ballCenter = ballBoundingSphere.center;
 
-  // Compute the vector from rim center to ball center (full 3D)
-  const collisionVector = new THREE.Vector3().subVectors(ballCenter, rimCenter);
-  const distance = collisionVector.length();
+  const { collided, normal } = sphereTorusCollision(
+    ballCenter,
+    ballBoundingSphere.radius,
+    rimCenter,
+    rimDiameter / 2,
+    rimThickness
+  );
 
-  // Use a tighter threshold to allow for realistic bounce
-  const rimCollisionRadius = rimDiameter / 2 + ballRadius - 0.01; // tweak as needed
-
-  // Check if ball is overlapping with rim space
-  if (distance <= rimCollisionRadius) {
-    const normal = collisionVector.normalize(); // full 3D normal
+  if (collided) {
+    // Approximate collision normal (from rim center to ball center)
     handleBallCollision(normal);
   }
 }
@@ -727,7 +812,7 @@ function detectScore(rimMesh, ballBoundingSphere) {
   if (ShotState === 0) {
     const rimPos = rimMesh.getWorldPosition(new THREE.Vector3());
     const ballPos = ballBoundingSphere.center;
-    if (ballPos.y <= rimPos.y && ballVelocity.y < 0) {
+    if (ballPos.y < rimPos.y && ballVelocity.y < 0) {
       let distanceFromRimCenter = ballBoundingSphere.center.sub(rimPos);
       let horizontalDistanceFromRimCenter = new THREE.Vector3(distanceFromRimCenter.x, 0, distanceFromRimCenter.z);
 
@@ -770,7 +855,7 @@ function simulatePhysics_Collision() {
   }
 
   simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere, ShootDirection * -1);
-  //simulatePhysics_RimCollision(rimMesh, ballBoundingSphere);
+  simulatePhysics_RimCollision(rimMesh, ballBoundingSphere);
 
   if (detectScore(rimMesh, ballBoundingSphere)) {
     shotsAttempts++;
@@ -814,7 +899,7 @@ function animate() {
   if (isShootingMode){
     // if ball stops moving or fell out of court -> reset ball
     if (ballVelocity.length() < 0.01 || ballSphereMesh.getWorldPosition(new THREE.Vector3()).y < -3) {
-      resetBall();
+    //  resetBall();
     }
   }
 }
