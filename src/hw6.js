@@ -71,7 +71,7 @@ const threePointsMarkingsRadiusCenterOffset = 1.57;
 
 // ball
 const ballRadius = 0.24; // standard basketball radius
-const ballStartHeight = 0;
+const ballStartHeight = 0.1;
 
 // rim
 const rimDiameter = 0.45;
@@ -88,8 +88,8 @@ let backHoopGroup;
 const ballMoveSpeed = 0.1;
 let ballMoveDirectionX = 0;
 let ballMoveDirectionZ = 0;
-const ballMinClamp = new THREE.Vector3(-courtLength / 2, ballStartHeight, -courtWidth / 2);
-const ballMaxClamp = new THREE.Vector3(courtLength / 2, ballStartHeight, courtWidth / 2);
+const ballMinClamp = new THREE.Vector3(-courtLength / 2, ballStartHeight + ballRadius, -courtWidth / 2);
+const ballMaxClamp = new THREE.Vector3(courtLength / 2, ballStartHeight + ballRadius, courtWidth / 2);
 
 // power
 let shotPower = 0.85; // value between 0.0 and 1.0
@@ -363,7 +363,7 @@ function createStaticBall(){
 
   ballSphereMesh = new THREE.Mesh(ballGeometry, ballMaterial);
   ballSphereMesh.castShadow = true;
-  ballSphereMesh.position.set(0, ballRadius, 0);
+  ballSphereMesh.position.set(0, 0, 0);
   ballSphereMesh.name = "sphere";
   ballSphereMesh.frustumCulled = false;
   ballSphereMesh.geometry.computeBoundingSphere();
@@ -386,7 +386,6 @@ function createStaticBall(){
   const tubeGeometry = new THREE.TubeGeometry(seamCurve, 128, seamWidth, 2, true);
 
   const circumVerticalSeamMesh = new THREE.Mesh(tubeGeometry, ballSeamMaterial);
-  circumVerticalSeamMesh.position.y = ballRadius;
   basketballGroup.add(circumVerticalSeamMesh);
 
   // clone vertical and rotate to be horizontal
@@ -424,7 +423,7 @@ function createStaticBall(){
     const x = r * Math.cos(theta);
     const z = r * Math.sin(theta);
 
-    seamHemisphereCurvePoints.push(new THREE.Vector3(x, y, z));
+    seamHemisphereCurvePoints.push(new THREE.Vector3(x, y - ballRadius, z));
   }
 
   const seamSouthHemisphereCurve = new THREE.CatmullRomCurve3(seamHemisphereCurvePoints);
@@ -436,12 +435,13 @@ function createStaticBall(){
     // clone south hemisphere, rotate and offset to be north hemisphere
   const northHemisphereSeamMesh =  southHemisphereSeamMesh.clone();
   northHemisphereSeamMesh.rotation.z += Math.PI ;
-  northHemisphereSeamMesh.position.y += ballRadius * 2;
   basketballGroup.add(northHemisphereSeamMesh);
 
   // add the entire group to the scene
   scene.add(basketballGroup);
-  
+
+  basketballGroup.position.y += ballRadius;
+
 }
 
 function lerp(a, b, alpha) {
@@ -498,7 +498,8 @@ function resetBall(){
         shotsAttempts++;
 
   ballVelocity.set(0,0,0)
-  basketballGroup.position.set(0,ballStartHeight,0)
+  basketballGroup.position.set(0,ballStartHeight + ballRadius,0)
+  basketballGroup.rotation.set(0,0,0);
   isShootingMode = false;
 
 
@@ -746,6 +747,20 @@ function simulatePhysics_Velocity(){
   basketballGroup.position.add(ballVelocity);
 }
 
+function simulatePhysics_Rotation() {
+  const velocity = ballVelocity.clone();
+  const speed = velocity.length();
+
+  if (speed === 0) return;
+
+  const axis = velocity.clone().normalize();
+  const angularSpeed = ballVelocity.length() / 2; // radians per frame
+
+  basketballGroup.rotateOnAxis(axis, angularSpeed);
+}
+
+
+
 function handleBallCollision(CollisionNormal) {
   ballVelocity = ballVelocity.reflect(CollisionNormal);
   ballVelocity.multiplyScalar(ballRestitution);
@@ -812,7 +827,7 @@ function detectScore(rimMesh, ballBoundingSphere) {
   if (ShotState === 0) {
     const rimPos = rimMesh.getWorldPosition(new THREE.Vector3());
     const ballPos = ballBoundingSphere.center;
-    if (ballPos.y < rimPos.y && ballVelocity.y < 0) {
+    if (ballPos.y < (rimPos.y) - 0.05 && ballVelocity.y < 0) {
       let distanceFromRimCenter = ballBoundingSphere.center.sub(rimPos);
       let horizontalDistanceFromRimCenter = new THREE.Vector3(distanceFromRimCenter.x, 0, distanceFromRimCenter.z);
 
@@ -837,7 +852,7 @@ function simulatePhysics_Collision() {
 
   if (courtBoundingBox.intersectsSphere(ballBoundingSphere)) {
     // change ball y immediately to prevent the ball from being stuck inside the collision
-    basketballGroup.position.y = 0;
+    basketballGroup.position.y = ballRadius;
     handleBallCollision(new THREE.Vector3(0, 1, 0));
   }
 
@@ -875,6 +890,7 @@ function simulatePhysics(){
   if (isShootingMode) {
     simulatePhysics_Gravity();
     simulatePhysics_Velocity();
+    simulatePhysics_Rotation();
     simulatePhysics_Collision();
   }
 }
@@ -897,9 +913,10 @@ function animate() {
   simulatePhysics();
 
   if (isShootingMode){
-    // if ball stops moving or fell out of court -> reset ball
-    if (ballVelocity.length() < 0.01 || ballSphereMesh.getWorldPosition(new THREE.Vector3()).y < -3) {
-    //  resetBall();
+    const ballYPos = ballSphereMesh.getWorldPosition(new THREE.Vector3()).y;
+    // if ball stops moving on court or fell out of court -> reset ball
+    if ((ballVelocity.length() < 0.01 &&  ballYPos <= ballRadius) || (ballYPos < -2)) {
+       resetBall();
     }
   }
 }
