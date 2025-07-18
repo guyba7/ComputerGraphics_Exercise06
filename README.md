@@ -8,7 +8,7 @@
 
 ## 🎮 Detailed Control Specifications
 
-| **Control** | **Function**             | **Implementation Details** |
+| **Control** | **Function**             | **Details** |
 |-------------|--------------------------|-----------------------------|
 | **Arrow Keys** | Move Basketball | • Left/Right: Move ball horizontally across court  <br> • Up/Down: Move ball forward/backward on court  <br> • Smooth movement with appropriate speed  <br> • Keep ball within court boundaries |
 | **W / S Keys** | Adjust Shot Power | • W: Increase shot power (stronger shot)  <br> • S: Decrease shot power (weaker shot)  <br> • Visual indicator showing current power level  <br> • Power range: 0% to 100% |
