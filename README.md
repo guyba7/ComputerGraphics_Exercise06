@@ -6,15 +6,21 @@
 3. Start the local web server: `node index.js`
 4. Open your browser and go to http://localhost:8000
 
+### Entire Basketball Court
+![Ball](Screenshots/BaseketballCourt.png)
 
 ### demo1
-![Screenshot](Screenshots/Basketball1.png)
+![Ball](Screenshots/basketball1.png)
 
 ### demo2
-![Screenshot](Screenshots/Basketball2.png)
+![Ball](Screenshots/basketball2.png)
 
 ### demo3
-![Screenshot](Screenshots/Basketball3.png)
+![Ball](Screenshots/basketball3.png)
+
+### 🎥 Demo Video
+
+[![Watch the video](https://youtu.be/DztSwigDshw)
 
 
 ## Group Members
