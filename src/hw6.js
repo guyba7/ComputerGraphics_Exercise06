@@ -70,11 +70,11 @@ const threePointsMarkingsRadius = (courtWidth - 1.8) / 2;
 const threePointsMarkingsRadiusCenterOffset = 1.57;
 
 // ball
-const ballRadius = 0.24; // standard basketball radius
+const ballRadius = 0.12; // standard basketball radius
 const ballStartHeight = 0.1;
 
 // rim
-const rimDiameter = 0.45;
+const rimDiameter = 0.46;
 const rimThickness = 0.02;
 
 // Objects
@@ -273,7 +273,7 @@ function createHoops(){
   const supportPoleArmThickness = 0.22
 
   const NetNumOfSegments = 16
-  const netHeight = 0.6;
+  const netHeight = 0.3;
   const NetInnerDiameter = rimDiameter * 0.6
 
 
@@ -310,8 +310,8 @@ function createHoops(){
     hoopGroup.add(backboard);
 
     // Rim
-    const rimXPos = backboardOffset + rimDiameter + backboardThickness - 2 * rimThickness;
-    const rimGeometry = new THREE.TorusGeometry(rimDiameter, rimThickness, 6, 64);
+    const rimXPos = backboardOffset + rimDiameter / 2 + backboardThickness - 2 * rimThickness;
+    const rimGeometry = new THREE.TorusGeometry(rimDiameter / 2, rimThickness, 6, 64);
     const rim = new THREE.Mesh(rimGeometry, rimMat);
     rim.castShadow = true;
     rim.name = "rim";
@@ -324,10 +324,10 @@ function createHoops(){
 
     for (let i = 0; i < NetNumOfSegments; i++) {
       const angle = (i / NetNumOfSegments) * Math.PI * 2;
-      const x_rim = rimDiameter * Math.cos(angle);
-      const z_rim = rimDiameter * Math.sin(angle);
-      const x_inner = NetInnerDiameter * Math.cos(angle);
-      const z_inner = NetInnerDiameter * Math.sin(angle);
+      const x_rim = rimDiameter / 2 * Math.cos(angle);
+      const z_rim = rimDiameter / 2 * Math.sin(angle);
+      const x_inner = NetInnerDiameter / 2 * Math.cos(angle);
+      const z_inner = NetInnerDiameter / 2 * Math.sin(angle);
 
       const netGeometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(rimXPos + x_rim, rimHeight, z_rim),
@@ -550,12 +550,6 @@ function applyTrajectoryVelocityToBall(targetPosition) {
     dirXZ.z * horizontalSpeed
   );
 
-    // Add tiny random deviation
-  const deviationStrength =  0;//0.002; // adjust for more or less randomness
-  velocity.x += (Math.random() * 2 - 1) * deviationStrength;
-  velocity.y += (Math.random() * 2 - 1) * deviationStrength;
-  velocity.z += (Math.random() * 2 - 1) * deviationStrength;
-
   // Set ball velocity to reach target
   ballVelocity.copy(velocity);
 }
@@ -736,6 +730,27 @@ function updateUI() {
   `;
 }
 
+/**
+ * Returns the world-aligned bounding box of a mesh.
+ * @param {THREE.Mesh} mesh - The mesh to compute the bounding box for.
+ * @returns {THREE.Box3} - The bounding box in world coordinates.
+ */
+function getWorldAlignedBoundingBox(mesh) {
+    const box = new THREE.Box3();
+
+    // Ensure geometry has bounding box
+    if (!mesh.geometry.boundingBox) {
+        mesh.geometry.computeBoundingBox();
+    }
+
+    // Copy the local bounding box
+    box.copy(mesh.geometry.boundingBox);
+
+    // Apply world matrix transformation
+    box.applyMatrix4(mesh.matrixWorld);
+
+    return box;
+}
 
 function simulatePhysics_Gravity(){
   if (isShootingMode){
@@ -767,8 +782,8 @@ function handleBallCollision(CollisionNormal) {
 }
 
 function simulatePhysics_BackboardCollision(backboardMesh, ballBoundingSphere,direction) {
-  const BackboardGBoundingBox = backboardMesh.geometry.boundingBox;
-  const BackboardGMeshPosition = backboardMesh.getWorldPosition(new THREE.Vector3());
+
+  const BackboardGBoundingBox = getWorldAlignedBoundingBox(backboardMesh);
 
   if (BackboardGBoundingBox.intersectsSphere(ballBoundingSphere)) {
     handleBallCollision(new THREE.Vector3(direction, 0, 0));
@@ -796,14 +811,15 @@ function sphereTorusCollision(sphereCenter, sphereRadius, torusCenter, torusRadi
 
   let normal = null;
   if (collided) {
-    // The normal is calculated in local space, but since we assume no rotation, it's valid in world space.
+    // The normal is calculated in local space, but since we assume no rotation (beyond the initial XZ alignment), it's valid in world space.
     normal = toTubeCenter.clone().normalize().negate();
   }
 
-  return { collided, normal };
+  return {collided, normal};
 }
 
 function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere) {
+  rimMesh.updateWorldMatrix(true, false);
   const rimCenter = rimMesh.getWorldPosition(new THREE.Vector3());
   const ballCenter = ballBoundingSphere.center;
 
@@ -820,7 +836,6 @@ function simulatePhysics_RimCollision(rimMesh, ballBoundingSphere) {
     handleBallCollision(normal);
   }
 }
-
 
 function detectScore(rimMesh, ballBoundingSphere) {
 
