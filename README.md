@@ -14,16 +14,16 @@
 | **W / S Keys** | Adjust Shot Power | • W: Increase shot power (stronger shot)  <br> • S: Decrease shot power (weaker shot)  <br> • Visual indicator showing current power level  <br> • Power range: 0% to 100% |
 | **Spacebar** | Shoot Basketball | • Launch ball toward nearest hoop  <br> • Use current power level for initial velocity  <br> • Calculate trajectory to reach hoop  <br> • Apply physics simulation after launch |
 | **R Key** | Reset Basketball | • Return ball to center court position  <br> • Reset ball velocity to zero  <br> • Reset shot power to default (50%)  <br> • Clear any physics state |
-| **O Key** | Toggle Camera | • Enable/disable orbit camera controls  <br> • (Inherited from HW05) |
+| **O Key** | Toggle Camera | • Enable/disable orbit camera controls  <br> |
 
 
-### demo1
+### Basketball being moved around the court using arrow keys with shot power adjustment
 ![Screenshot](Screenshots/Basketball1.png)
 
-### demo2
+### Shooting with rotation animation
 ![Screenshot](Screenshots/Basketball2.png)
 
-### demo3
+### Shot with score update
 ![Screenshot](Screenshots/Basketball3.png)
 
 ### 🎥 Demo Video

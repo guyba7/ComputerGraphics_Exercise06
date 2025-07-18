@@ -501,6 +501,7 @@ function resetBall(){
   basketballGroup.position.set(0,ballStartHeight + ballRadius,0)
   basketballGroup.rotation.set(0,0,0);
   isShootingMode = false;
+  shotPower = 0.85;
 
 
 }
